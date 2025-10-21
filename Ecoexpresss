@@ -1830,7 +1830,7 @@
 
         // Google Sheets Configuration
         // REEMPLAZA ESTA URL CON LA DE TU GOOGLE APPS SCRIPT
-        const API_URL = 'https://script.google.com/macros/s/AKfycbyJYOSRs7JhMGa1GLm0I5AInPMTN-JoUnpKYZu0_rgwDLOg98jvqEJaq4JEt14WigHOhw/exec';
+        const API_URL = 'https://script.google.com/macros/s/AKfycbw0tBWCrXXVsUFApdum4-xGdFhqaXcJ1vcuNLEW1p9d9TmFX50BdiSXgfWcgiO-D3xc-g/exec';
         
         // Google Sheets Status
         let sheetsConnected = false;
