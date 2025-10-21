@@ -1,4 +1,4 @@
-!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -1142,30 +1142,6 @@
             filter: invert(1);
         }
 
-        /* Google Sheets Status */
-        .sheets-status {
-            position: fixed;
-            bottom: 100px;
-            right: 30px;
-            background-color: var(--success-color);
-            color: white;
-            padding: 10px 15px;
-            border-radius: 30px;
-            display: none;
-            align-items: center;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-            z-index: 999;
-            transition: all 0.3s ease;
-        }
-
-        .sheets-status i {
-            margin-right: 10px;
-        }
-
-        .sheets-status.error {
-            background-color: #dc3545;
-        }
-
         /* Responsive Styles */
         @media (max-width: 768px) {
             .hero h1 {
@@ -1238,12 +1214,6 @@
 
     <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
-
-    <!-- Google Sheets Status -->
-    <div class="sheets-status" id="sheetsStatus">
-        <i class="fas fa-check-circle"></i>
-        <span id="sheetsStatusText">Conectado a Google Sheets</span>
-    </div>
 
     <!-- Header -->
     <header class="header" id="header">
@@ -1473,7 +1443,7 @@
                         <div class="map-info-item">
                             <i class="fas fa-clock"></i>
                             <div>
-                                <strong>Horario:</strong> Lunes a Sábado: 8:00 AM - 6:00 PM
+                                <strong>Horario:</strong> Lunes a Sábado: 7:00 AM - 7:00 PM Jornada Continua y Domingo 8:00 AM - 1:00 PM
                             </div>
                         </div>
                         <div class="map-info-item">
@@ -1622,6 +1592,7 @@
                                                 <span>Punto Físico</span>
                                             </div>
                                         </div>
+                                        <input type="hidden" name="tipo-entrega" id="deliveryType">
                                     </div>
                                 </div>
                             </div>
@@ -1629,7 +1600,7 @@
                                 <div class="col-md-12">
                                     <div class="form-group">
                                         <label class="form-label">Dirección de Entrega <span id="addressRequired" class="required-field">*</span></label>
-                                        <input type="text" class="form-control" id="customerAddress" name="direccion">
+                                        <input type="text" class="form-control" id="customerAddress" name="direccion" placeholder="Ingresa tu dirección para entrega a domicilio">
                                     </div>
                                 </div>
                             </div>
@@ -1638,6 +1609,9 @@
                             <div id="servicesList">
                                 <!-- Services will be dynamically added here -->
                             </div>
+                            
+                            <input type="hidden" name="servicios" id="servicesListData">
+                            <input type="hidden" name="total" id="totalAmountData">
                             
                             <div class="total-section">
                                 <div>
@@ -1808,9 +1782,9 @@
                     <p class="mt-3">Hemos recibido tu solicitud y procesaremos tu pedido lo antes posible. Te contactaremos pronto para confirmar los detalles de entrega.</p>
                     <p class="mt-2"><strong>Número de pedido:</strong> <span id="orderNumber"></span></p>
                     <p class="mt-2"><strong>Te contactaremos pronto para coordinar la entrega</strong></p>
-                    <div class="mt-3" id="sheetsSyncStatus">
-                        <i class="fas fa-sync-alt fa-spin me-2"></i>
-                        <span>Sincronizando con Google Sheets...</span>
+                    <div class="mt-3" id="netlifyStatus">
+                        <i class="fas fa-check-circle text-success me-2"></i>
+                        <span>Pedido guardado correctamente en nuestra base de datos</span>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -1828,14 +1802,6 @@
             duration: 1000,
             once: true
         });
-
-        // Google Sheets Configuration
-        // REEMPLAZA ESTA URL CON LA DE TU GOOGLE APPS SCRIPT
-        const API_URL = 'https://script.google.com/macros/s/AKfycbw0tBWCrXXVsUFApdum4-xGdFhqaXcJ1vcuNLEW1p9d9TmFX50BdiSXgfWcgiO-D3xc-g/exec';
-        
-        // Google Sheets Status
-        let sheetsConnected = false;
-        let sheetsSyncInProgress = false;
 
         // Hero slider functionality
         let currentSlide = 0;
@@ -1945,6 +1911,9 @@
             
             selectedDeliveryOption = option;
             
+            // Update hidden field
+            document.getElementById('deliveryType').value = option === 'home' ? 'A Domicilio' : 'Punto Físico';
+            
             // Show/hide address field based on selection
             const addressRow = document.getElementById('addressRow');
             const addressRequired = document.getElementById('addressRequired');
@@ -2038,51 +2007,80 @@
         }
 
         // Confirm payment
-function confirmPayment(method) {
-    showLoader();
-    
-    // Rellenar los campos ocultos antes de enviar
-    document.getElementById('deliveryType').value = selectedDeliveryOption === 'home' ? 'A Domicilio' : 'Punto Físico';
-    
-    // Obtener los servicios seleccionados
-    const selectedServices = [];
-    let totalAmount = 0;
-    
-    services.forEach(service => {
-        const quantityElement = document.getElementById(`quantity-${service.id}`);
-        const quantity = parseInt(quantityElement.textContent);
-        if (quantity > 0) {
-            selectedServices.push(`${service.name} (${quantity} ${service.unit})`);
-            totalAmount += quantity * service.price;
+        function confirmPayment(method) {
+            showLoader();
+            
+            setTimeout(() => {
+                hideLoader();
+                
+                // Generate random order number
+                const orderNumber = 'ORD' + Math.floor(Math.random() * 100000);
+                document.getElementById('orderNumber').textContent = orderNumber;
+                
+                // Prepare order data
+                prepareOrderData(orderNumber, method);
+                
+                // Show success modal
+                const successModal = new bootstrap.Modal(document.getElementById('successModal'));
+                successModal.show();
+                
+                // Reset form after modal is closed
+                document.getElementById('successModal').addEventListener('hidden.bs.modal', function () {
+                    resetForm();
+                    // Scroll to top
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                });
+                
+                showToast('¡Pedido confirmado exitosamente!', 'success');
+            }, 2000);
         }
-    });
-    
-    document.getElementById('servicesList').value = selectedServices.join(', ');
-    document.getElementById('totalAmount').value = totalAmount;
-    
-    // Generar número de pedido
-    const orderNumber = 'ORD' + Math.floor(Math.random() * 100000);
-    document.getElementById('orderNumber').textContent = orderNumber;
-    
-    setTimeout(() => {
-        hideLoader();
-        
-        // Enviar el formulario de la manera tradicional
-        document.getElementById('orderForm').submit();
-        
-        // Mostrar el modal de éxito (el usuario lo verá después de que Netlify redirija)
-        const successModal = new bootstrap.Modal(document.getElementById('successModal'));
-        successModal.show();
-        
-        // Actualizar el modal para que no muestre el estado de sincronización con Google Sheets
-        const syncStatusElement = document.getElementById('sheetsSyncStatus');
-        if (syncStatusElement) {
-            syncStatusElement.innerHTML = '<i class="fas fa-check-circle text-success me-2"></i><span>Pedido recibido correctamente</span>';
+
+        // Prepare order data for Netlify Forms
+        function prepareOrderData(orderNumber, paymentMethod) {
+            // Get selected services
+            const selectedServices = [];
+            let totalAmount = 0;
+            
+            services.forEach(service => {
+                const quantityElement = document.getElementById(`quantity-${service.id}`);
+                const quantity = parseInt(quantityElement.textContent);
+                if (quantity > 0) {
+                    selectedServices.push(`${service.name} (${quantity} ${service.unit})`);
+                    totalAmount += quantity * service.price;
+                }
+            });
+            
+            // Format services as a string
+            const servicesString = selectedServices.join(', ');
+            
+            // Update hidden fields
+            document.getElementById('servicesListData').value = servicesString;
+            document.getElementById('totalAmountData').value = totalAmount;
+            
+            // Add payment method to form
+            const paymentMethodField = document.createElement('input');
+            paymentMethodField.type = 'hidden';
+            paymentMethodField.name = 'metodo-pago';
+            paymentMethodField.value = paymentMethod === 'cash' ? 'Efectivo' : 'Nequi QR';
+            document.getElementById('orderForm').appendChild(paymentMethodField);
+            
+            // Add order number to form
+            const orderNumberField = document.createElement('input');
+            orderNumberField.type = 'hidden';
+            orderNumberField.name = 'numero-pedido';
+            orderNumberField.value = orderNumber;
+            document.getElementById('orderForm').appendChild(orderNumberField);
+            
+            // Add order date to form
+            const orderDateField = document.createElement('input');
+            orderDateField.type = 'hidden';
+            orderDateField.name = 'fecha-pedido';
+            orderDateField.value = new Date().toLocaleString('es-CO');
+            document.getElementById('orderForm').appendChild(orderDateField);
+            
+            // Submit the form to Netlify
+            document.getElementById('orderForm').submit();
         }
-        
-        showToast('¡Pedido confirmado exitosamente!', 'success');
-    }, 2000);
-}
 
         // Back to form
         function backToForm() {
@@ -2227,19 +2225,19 @@ function confirmPayment(method) {
         });
 
         // Initialize page
-document.addEventListener('DOMContentLoaded', function() {
-    // Intentar sincronizar pedidos pendientes al cargar la página
-    syncPendingOrders();
-    
-    initializeServices();
-    loadTheme();
-    
-    // Initialize form with address required by default
-    document.getElementById('addressRequired').style.display = 'inline';
-    document.getElementById('customerAddress').required = false;
-    
-    // Show welcome message
-    setTimeout(() => {
-        showToast('¡Bienvenido a Lavandería ECO EXPRESS en Líbano, Tolima!', 'info');
-    }, 1000);
-});
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeServices();
+            loadTheme();
+            
+            // Initialize form with address required by default
+            document.getElementById('addressRequired').style.display = 'inline';
+            document.getElementById('customerAddress').required = false;
+            
+            // Show welcome message
+            setTimeout(() => {
+                showToast('¡Bienvenido a Lavandería ECO EXPRESS en Líbano, Tolima!', 'info');
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
