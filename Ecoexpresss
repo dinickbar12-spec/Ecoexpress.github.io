@@ -1586,18 +1586,19 @@
             <div class="row justify-content-center">
                 <div class="col-md-10">
                     <div class="form-container" data-aos="fade-up">
-                        <form id="orderForm">
+                        <form name="pedido-lavanderia" method="POST" data-netlify="true" id="orderForm">
+                            <input type="hidden" name="form-name" value="pedido-lavanderia">
                             <div class="row">
                                 <div class="col-md-6">
                                     <div class="form-group">
                                         <label class="form-label">Nombre Completo *</label>
-                                        <input type="text" class="form-control" id="customerName" required>
+                                        <input type="text" class="form-control" id="customerName" name="nombre" required>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="form-group">
                                         <label class="form-label">Teléfono *</label>
-                                        <input type="tel" class="form-control" id="customerPhone" required>
+                                        <input type="tel" class="form-control" id="customerPhone" name="telefono" required>
                                     </div>
                                 </div>
                             </div>
@@ -1605,7 +1606,7 @@
                                 <div class="col-md-6">
                                     <div class="form-group">
                                         <label class="form-label">Correo Electrónico</label>
-                                        <input type="email" class="form-control" id="customerEmail">
+                                        <input type="email" class="form-control" id="customerEmail" name="email">
                                     </div>
                                 </div>
                                 <div class="col-md-6">
@@ -1628,7 +1629,7 @@
                                 <div class="col-md-12">
                                     <div class="form-group">
                                         <label class="form-label">Dirección de Entrega <span id="addressRequired" class="required-field">*</span></label>
-                                        <input type="text" class="form-control" id="customerAddress" placeholder="Ingresa tu dirección para entrega a domicilio">
+                                        <input type="text" class="form-control" id="customerAddress" name="direccion">
                                     </div>
                                 </div>
                             </div>
@@ -2037,266 +2038,50 @@
         }
 
         // Confirm payment
-        function confirmPayment(method) {
-            showLoader();
-            
-            setTimeout(() => {
-                hideLoader();
-                
-                // Generate random order number
-                const orderNumber = 'ORD' + Math.floor(Math.random() * 100000);
-                document.getElementById('orderNumber').textContent = orderNumber;
-                
-                // Prepare order data for Google Sheets
-                const orderData = prepareOrderData(orderNumber, method);
-                
-                // Show success modal
-                const successModal = new bootstrap.Modal(document.getElementById('successModal'));
-                successModal.show();
-                
-                // Send order data to Google Sheets
-function sendOrderToGoogleSheets(orderData) {
-    sheetsSyncInProgress = true;
-    updateSheetsStatus('syncing');
+function confirmPayment(method) {
+    showLoader();
     
-    console.log('Enviando datos a Google Sheets:', orderData);
-    console.log('URL de la API:', API_URL);
+    // Rellenar los campos ocultos antes de enviar
+    document.getElementById('deliveryType').value = selectedDeliveryOption === 'home' ? 'A Domicilio' : 'Punto Físico';
     
-    // Crear un controlador de tiempo de espera
-    const timeoutId = setTimeout(() => {
-        if (sheetsSyncInProgress) {
-            console.log('Tiempo de espera agotado para la sincronización con Google Sheets');
-            updateSheetsStatus('error');
-            sheetsSyncInProgress = false;
-            
-            const syncStatusElement = document.getElementById('sheetsSyncStatus');
-            if (syncStatusElement) {
-                syncStatusElement.innerHTML = '<i class="fas fa-exclamation-triangle text-warning me-2"></i><span>Tiempo de espera agotado. El pedido se guardará localmente.</span>';
-            }
-            
-            showToast('La sincronización está tardando demasiado. El pedido se ha guardado localmente y se procesará más tarde.', 'warning');
-            
-            // Guardar localmente como plan B
-            saveOrderLocally(orderData);
-        }
-    }, 10000); // 10 segundos de tiempo de espera
+    // Obtener los servicios seleccionados
+    const selectedServices = [];
+    let totalAmount = 0;
     
-    // Enviar datos a Google Sheets
-    fetch(API_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderData)
-    })
-    .then(response => {
-        console.log('Respuesta de Google Sheets (status):', response.status);
-        
-        // Cancelar el tiempo de espera si recibimos respuesta
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-            throw new Error(`Error en el servidor: ${response.status}`);
+    services.forEach(service => {
+        const quantityElement = document.getElementById(`quantity-${service.id}`);
+        const quantity = parseInt(quantityElement.textContent);
+        if (quantity > 0) {
+            selectedServices.push(`${service.name} (${quantity} ${service.unit})`);
+            totalAmount += quantity * service.price;
         }
-        return response.json();
-    })
-    .then(data => {
-        console.log('Respuesta de Google Sheets (data):', data);
-        
-        if (data.result === 'success') {
-            updateSheetsStatus('success');
-            sheetsConnected = true;
-            
-            const syncStatusElement = document.getElementById('sheetsSyncStatus');
-            if (syncStatusElement) {
-                syncStatusElement.innerHTML = '<i class="fas fa-check-circle text-success me-2"></i><span>Pedido guardado en Google Sheets</span>';
-            }
-            showToast('¡Pedido guardado exitosamente!', 'success');
-        } else {
-            throw new Error(data.message || 'Error desconocido del servidor');
-        }
-        
-        sheetsSyncInProgress = false;
-    })
-    .catch(error => {
-        console.error('Error al enviar datos a Google Sheets:', error);
-        
-        // Cancelar el tiempo de espera si hay un error
-        clearTimeout(timeoutId);
-        
-        updateSheetsStatus('error');
-        sheetsSyncInProgress = false;
-        
-        const syncStatusElement = document.getElementById('sheetsSyncStatus');
-        if (syncStatusElement) {
-            syncStatusElement.innerHTML = '<i class="fas fa-exclamation-circle text-danger me-2"></i><span>Error al guardar en Google Sheets</span>';
-        }
-        
-        showToast('Error al guardar en Google Sheets: ' + error.message, 'error');
-        
-        // Guardar localmente como plan B
-        saveOrderLocally(orderData);
     });
-}
-
-// Función para guardar pedidos localmente (plan B)
-function saveOrderLocally(orderData) {
-    try {
-        // Obtener pedidos guardados previamente
-        let savedOrders = localStorage.getItem('pendingOrders');
-        savedOrders = savedOrders ? JSON.parse(savedOrders) : [];
-        
-        // Agregar el nuevo pedido
-        savedOrders.push(orderData);
-        
-        // Guardar en localStorage
-        localStorage.setItem('pendingOrders', JSON.stringify(savedOrders));
-        
-        console.log('Pedido guardado localmente:', orderData);
-        showToast('Pedido guardado localmente. Se sincronizará cuando la conexión esté disponible.', 'info');
-    } catch (error) {
-        console.error('Error al guardar el pedido localmente:', error);
-    }
-}
-
-// Función para sincronizar pedidos pendientes
-function syncPendingOrders() {
-    try {
-        let savedOrders = localStorage.getItem('pendingOrders');
-        if (!savedOrders) return;
-        
-        savedOrders = JSON.parse(savedOrders);
-        if (savedOrders.length === 0) return;
-        
-        console.log('Intentando sincronizar pedidos pendientes:', savedOrders.length);
-        
-        // Intentar sincronizar cada pedido pendiente
-        savedOrders.forEach((order, index) => {
-            fetch(API_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(order)
-            })
-            .then(response => {
-                if (response.ok) {
-                    return response.json();
-                } else {
-                    throw new Error(`Error en el servidor: ${response.status}`);
-                }
-            })
-            .then(data => {
-                if (data.result === 'success') {
-                    // Eliminar el pedido sincronizado
-                    savedOrders.splice(index, 1);
-                    localStorage.setItem('pendingOrders', JSON.stringify(savedOrders));
-                    console.log('Pedido sincronizado correctamente:', order.orderNumber);
-                    showToast('Pedido pendiente sincronizado: ' + order.orderNumber, 'success');
-                }
-            })
-            .catch(error => {
-                console.error('Error al sincronizar pedido pendiente:', error);
-            });
-        });
-    } catch (error) {
-        console.error('Error al sincronizar pedidos pendientes:', error);
-    }
-}
-
-        // Prepare order data for Google Sheets
-        function prepareOrderData(orderNumber, paymentMethod) {
-            const customerName = document.getElementById('customerName').value;
-            const customerPhone = document.getElementById('customerPhone').value;
-            const customerEmail = document.getElementById('customerEmail').value;
-            const customerAddress = document.getElementById('customerAddress').value;
-            const deliveryType = selectedDeliveryOption === 'home' ? 'A Domicilio' : 'Punto Físico';
-            const currentDate = new Date().toLocaleString('es-CO');
-            
-            // Get selected services
-            const selectedServices = [];
-            let totalAmount = 0;
-            
-            services.forEach(service => {
-                const quantityElement = document.getElementById(`quantity-${service.id}`);
-                const quantity = parseInt(quantityElement.textContent);
-                if (quantity > 0) {
-                    selectedServices.push({
-                        name: service.name,
-                        quantity: quantity,
-                        price: service.price,
-                        unit: service.unit,
-                        subtotal: quantity * service.price
-                    });
-                    totalAmount += quantity * service.price;
-                }
-            });
-            
-            // Format services as a string
-            const servicesString = selectedServices.map(s => 
-                `${s.name} (${s.quantity} ${s.unit})`
-            ).join(', ');
-            
-            return {
-                orderNumber,
-                customerName,
-                customerPhone,
-                customerEmail,
-                customerAddress,
-                deliveryType,
-                paymentMethod: paymentMethod === 'cash' ? 'Efectivo' : 'Nequi QR',
-                services: servicesString,
-                totalAmount,
-                orderDate: currentDate,
-                status: 'Pendiente'
-            };
-        }
-
-        // Send order data to Google Sheets
-function sendOrderToGoogleSheets(orderData) {
-    sheetsSyncInProgress = true;
-    updateSheetsStatus('syncing');
     
-    // Mostrar en consola los datos que se enviarán
-    console.log('Enviando datos a Google Sheets:', orderData);
+    document.getElementById('servicesList').value = selectedServices.join(', ');
+    document.getElementById('totalAmount').value = totalAmount;
     
-    // Enviar datos a Google Sheets
-    fetch(API_URL, {
-        method: 'POST',
-        mode: 'no-cors', // Cambiado a no-cors para evitar problemas de CORS
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderData)
-    })
-    .then(response => {
-        // Con no-cors, no podemos leer la respuesta, pero asumimos éxito
-        console.log('Datos enviados a Google Sheets');
-        updateSheetsStatus('success');
-        sheetsConnected = true;
+    // Generar número de pedido
+    const orderNumber = 'ORD' + Math.floor(Math.random() * 100000);
+    document.getElementById('orderNumber').textContent = orderNumber;
+    
+    setTimeout(() => {
+        hideLoader();
         
-        // Actualizar el estado de sincronización en el modal
+        // Enviar el formulario de la manera tradicional
+        document.getElementById('orderForm').submit();
+        
+        // Mostrar el modal de éxito (el usuario lo verá después de que Netlify redirija)
+        const successModal = new bootstrap.Modal(document.getElementById('successModal'));
+        successModal.show();
+        
+        // Actualizar el modal para que no muestre el estado de sincronización con Google Sheets
         const syncStatusElement = document.getElementById('sheetsSyncStatus');
         if (syncStatusElement) {
-            syncStatusElement.innerHTML = '<i class="fas fa-check-circle text-success me-2"></i><span>Pedido guardado en Google Sheets</span>';
+            syncStatusElement.innerHTML = '<i class="fas fa-check-circle text-success me-2"></i><span>Pedido recibido correctamente</span>';
         }
         
-        sheetsSyncInProgress = false;
-    })
-    .catch(error => {
-        console.error('Error al enviar datos a Google Sheets:', error);
-        updateSheetsStatus('error');
-        sheetsSyncInProgress = false;
-        
-        // Actualizar el estado de sincronización en el modal
-        const syncStatusElement = document.getElementById('sheetsSyncStatus');
-        if (syncStatusElement) {
-            syncStatusElement.innerHTML = '<i class="fas fa-exclamation-circle text-danger me-2"></i><span>Error al guardar en Google Sheets</span>';
-        }
-        
-        // Mostrar mensaje de error
-        showToast('Error al guardar en Google Sheets: ' + error.message, 'error');
-    });
+        showToast('¡Pedido confirmado exitosamente!', 'success');
+    }, 2000);
 }
 
         // Back to form
