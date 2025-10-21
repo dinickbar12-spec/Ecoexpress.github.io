@@ -2054,19 +2054,155 @@
                 const successModal = new bootstrap.Modal(document.getElementById('successModal'));
                 successModal.show();
                 
-                // Send data to Google Sheets
-                sendOrderToGoogleSheets(orderData);
-                
-                // Reset form after modal is closed
-                document.getElementById('successModal').addEventListener('hidden.bs.modal', function () {
-                    resetForm();
-                    // Scroll to top
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                });
-                
-                showToast('¡Pedido confirmado exitosamente!', 'success');
-            }, 2000);
+                // Send order data to Google Sheets
+function sendOrderToGoogleSheets(orderData) {
+    sheetsSyncInProgress = true;
+    updateSheetsStatus('syncing');
+    
+    console.log('Enviando datos a Google Sheets:', orderData);
+    console.log('URL de la API:', API_URL);
+    
+    // Crear un controlador de tiempo de espera
+    const timeoutId = setTimeout(() => {
+        if (sheetsSyncInProgress) {
+            console.log('Tiempo de espera agotado para la sincronización con Google Sheets');
+            updateSheetsStatus('error');
+            sheetsSyncInProgress = false;
+            
+            const syncStatusElement = document.getElementById('sheetsSyncStatus');
+            if (syncStatusElement) {
+                syncStatusElement.innerHTML = '<i class="fas fa-exclamation-triangle text-warning me-2"></i><span>Tiempo de espera agotado. El pedido se guardará localmente.</span>';
+            }
+            
+            showToast('La sincronización está tardando demasiado. El pedido se ha guardado localmente y se procesará más tarde.', 'warning');
+            
+            // Guardar localmente como plan B
+            saveOrderLocally(orderData);
         }
+    }, 10000); // 10 segundos de tiempo de espera
+    
+    // Enviar datos a Google Sheets
+    fetch(API_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderData)
+    })
+    .then(response => {
+        console.log('Respuesta de Google Sheets (status):', response.status);
+        
+        // Cancelar el tiempo de espera si recibimos respuesta
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            throw new Error(`Error en el servidor: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Respuesta de Google Sheets (data):', data);
+        
+        if (data.result === 'success') {
+            updateSheetsStatus('success');
+            sheetsConnected = true;
+            
+            const syncStatusElement = document.getElementById('sheetsSyncStatus');
+            if (syncStatusElement) {
+                syncStatusElement.innerHTML = '<i class="fas fa-check-circle text-success me-2"></i><span>Pedido guardado en Google Sheets</span>';
+            }
+            showToast('¡Pedido guardado exitosamente!', 'success');
+        } else {
+            throw new Error(data.message || 'Error desconocido del servidor');
+        }
+        
+        sheetsSyncInProgress = false;
+    })
+    .catch(error => {
+        console.error('Error al enviar datos a Google Sheets:', error);
+        
+        // Cancelar el tiempo de espera si hay un error
+        clearTimeout(timeoutId);
+        
+        updateSheetsStatus('error');
+        sheetsSyncInProgress = false;
+        
+        const syncStatusElement = document.getElementById('sheetsSyncStatus');
+        if (syncStatusElement) {
+            syncStatusElement.innerHTML = '<i class="fas fa-exclamation-circle text-danger me-2"></i><span>Error al guardar en Google Sheets</span>';
+        }
+        
+        showToast('Error al guardar en Google Sheets: ' + error.message, 'error');
+        
+        // Guardar localmente como plan B
+        saveOrderLocally(orderData);
+    });
+}
+
+// Función para guardar pedidos localmente (plan B)
+function saveOrderLocally(orderData) {
+    try {
+        // Obtener pedidos guardados previamente
+        let savedOrders = localStorage.getItem('pendingOrders');
+        savedOrders = savedOrders ? JSON.parse(savedOrders) : [];
+        
+        // Agregar el nuevo pedido
+        savedOrders.push(orderData);
+        
+        // Guardar en localStorage
+        localStorage.setItem('pendingOrders', JSON.stringify(savedOrders));
+        
+        console.log('Pedido guardado localmente:', orderData);
+        showToast('Pedido guardado localmente. Se sincronizará cuando la conexión esté disponible.', 'info');
+    } catch (error) {
+        console.error('Error al guardar el pedido localmente:', error);
+    }
+}
+
+// Función para sincronizar pedidos pendientes
+function syncPendingOrders() {
+    try {
+        let savedOrders = localStorage.getItem('pendingOrders');
+        if (!savedOrders) return;
+        
+        savedOrders = JSON.parse(savedOrders);
+        if (savedOrders.length === 0) return;
+        
+        console.log('Intentando sincronizar pedidos pendientes:', savedOrders.length);
+        
+        // Intentar sincronizar cada pedido pendiente
+        savedOrders.forEach((order, index) => {
+            fetch(API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(order)
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    throw new Error(`Error en el servidor: ${response.status}`);
+                }
+            })
+            .then(data => {
+                if (data.result === 'success') {
+                    // Eliminar el pedido sincronizado
+                    savedOrders.splice(index, 1);
+                    localStorage.setItem('pendingOrders', JSON.stringify(savedOrders));
+                    console.log('Pedido sincronizado correctamente:', order.orderNumber);
+                    showToast('Pedido pendiente sincronizado: ' + order.orderNumber, 'success');
+                }
+            })
+            .catch(error => {
+                console.error('Error al sincronizar pedido pendiente:', error);
+            });
+        });
+    } catch (error) {
+        console.error('Error al sincronizar pedidos pendientes:', error);
+    }
+}
 
         // Prepare order data for Google Sheets
         function prepareOrderData(orderNumber, paymentMethod) {
@@ -2306,19 +2442,19 @@ function sendOrderToGoogleSheets(orderData) {
         });
 
         // Initialize page
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeServices();
-            loadTheme();
-            
-            // Initialize form with address required by default
-            document.getElementById('addressRequired').style.display = 'inline';
-            document.getElementById('customerAddress').required = false;
-            
-            // Show welcome message
-            setTimeout(() => {
-                showToast('¡Bienvenido a Lavandería ECO EXPRESS en Líbano, Tolima!', 'info');
-            }, 1000);
-        });
-    </script>
-</body>
-</html>
+document.addEventListener('DOMContentLoaded', function() {
+    // Intentar sincronizar pedidos pendientes al cargar la página
+    syncPendingOrders();
+    
+    initializeServices();
+    loadTheme();
+    
+    // Initialize form with address required by default
+    document.getElementById('addressRequired').style.display = 'inline';
+    document.getElementById('customerAddress').required = false;
+    
+    // Show welcome message
+    setTimeout(() => {
+        showToast('¡Bienvenido a Lavandería ECO EXPRESS en Líbano, Tolima!', 'info');
+    }, 1000);
+});
